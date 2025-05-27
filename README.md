@@ -1,13 +1,13 @@
 # Minecraft Server Docker
 
-The docker compose file can be used to run a standalone minecraft server instantly.
+The docker compose file can be used to run a standalone minecraft server ~almost~ instantly. This method is purely a means of running a server and intentionally requires you to store your server files in a folder on your host machine for ease of adding plugins and tweaking other settings.
 
 ## Prerequisites
 
 1. docker / docker compose installed on your machine
 2. minecraft server jar file downloaded
 
-## Linux Instructions
+## Linux CLI Instructions
 
 ### How to run
 

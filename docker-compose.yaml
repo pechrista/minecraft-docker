@@ -9,7 +9,6 @@ services:
     volumes:
       - ./:/data # mount vol for curr directory as `/data`
     restart: unless-stopped
-    # replace `paper.jar` with minecraft server jar file
     command: /bin/sh -c "cd /data && java -Xms8G -Xmx8G -jar server.jar --nogui"
     # The following allow `docker attach container minecraft-server` to work
     stdin_open: true

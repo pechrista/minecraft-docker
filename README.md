@@ -13,7 +13,10 @@ The docker compose file can be used to run a standalone minecraft server ~almost
 
 1. Create folder for minecraft server (ex.`minecraft-server`).
 1. Copy the minecraft server jar file into folder. Name it `server.jar`.
-1. Run `curl -L https://github.com/pechrista/minecraft-docker/tarball/master | tar -xz --strip-components=1` to download the repo
+1. Run the following to download the repo to your current directory: 
+```
+curl -L https://github.com/pechrista/minecraft-docker/tarball/master | tar -xz --strip-components=1
+```
 1. From inside the minecraft server folder, run `docker compose up` or `mc_start` if you followed the optional shortcuts section. Sudo may be required depending on how your user has been setup.
 
 ### Optional shortcuts

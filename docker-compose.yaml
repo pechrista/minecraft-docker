@@ -9,7 +9,7 @@ services:
     volumes:
       - ./:/data # mount vol for curr directory as `/data`
     restart: unless-stopped
-    command: /bin/sh -c "cd /data && java -Xms${MIN_JAVA_GB}G -Xmx${MAX_JAVA_GB}G -jar server.jar --nogui"
+    command: /bin/sh -c "cd /data && java -Xms${MIN_JAVA_GB}G -Xmx${MAX_JAVA_GB}G -jar ${SERVER_FILE_NAME} --nogui"
     # The following allow `docker attach container minecraft-server` to work
     stdin_open: true
     tty: true

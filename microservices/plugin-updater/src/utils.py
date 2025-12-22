@@ -1,19 +1,22 @@
-import time
 import hashlib
 import os
 import argparse
 import shutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 def generate_md5(full_path, buffer_size: int = 65536):
+        logger.debug(f"Generating md5 for: {full_path}")
         # Create the MD5 hash object
         hasher = hashlib.md5()
 
         try:
             if full_path is None:
-                print(f"Error: File path is None")
+                logger.error(f"Error: File path is None")
                 return None
             if not os.path.exists(full_path):
-                print(f"Error: File not found at path: {full_path}")
+                logger.error(f"Error: File not found at path: {full_path}")
                 return None
 
             with open(full_path, 'rb') as f:
@@ -25,7 +28,7 @@ def generate_md5(full_path, buffer_size: int = 65536):
                     hasher.update(chunk)
 
         except Exception as e:
-            print(f"Error processing md5, given file path: {full_path}")
+            logger.error(f"Error processing md5, given file path: {full_path}")
             raise Exception(e)
         
         return hasher.hexdigest()
@@ -45,17 +48,14 @@ def setup_argparse():
 
     return parser.parse_args()
 
-
 def move_file(src_path: str, dst_path: str):
-    try:
-        # Check if the destination directory exists and create it if not
-        if not os.path.exists(dst_path):
-            os.makedirs(dst_path)
+    logger.debug(f"Moving file from {src_path} to {dst_path}")
 
+    try:
         # Move the file
         shutil.move(src_path, dst_path)
 
     except FileNotFoundError:
-        print(f"Error: Source file '{src_path}' not found.")
+        logger.error(f"Error: Source file '{src_path}' not found.")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logger.error(f"An unexpected error occurred: {e}")

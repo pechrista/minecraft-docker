@@ -1,8 +1,10 @@
 from utils import generate_md5
 import os
 import requests
-import shutil
 import tempfile
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Plugin:
     """
@@ -12,6 +14,7 @@ class Plugin:
     # A class attribute to store all registered subclasses (the registry)
     _plugin_registry = {}
 
+
     def __init_subclass__(cls, **kwargs):
         """
         This special method is called automatically whenever a class
@@ -20,7 +23,7 @@ class Plugin:
         super().__init_subclass__(**kwargs)
         # The name used for registration is the class's own name
         cls._plugin_registry[cls.__name__] = cls
-        print(f"Registered plugin: {cls.__name__}")
+
 
     def __new__(cls, plugin_dict, *args, **kwargs):
         """
@@ -44,21 +47,22 @@ class Plugin:
                     return instance
             
             # If the name is not found, create a base Plugin instance
-            print(f"No specific plugin found for {class_name}, using base Plugin class")
             instance = object.__new__(cls)
             return instance
+
 
     def __init__(self, plugin: dict):
         self.name = plugin.get("name", "")
         self.class_name = plugin.get("class_name", "Plugin")
-        self.url = plugin.get("url", "")
         self.src = plugin.get("source", "")
         self.dst = plugin.get("destination", "")
         self.full_path = self.generate_full_path()
         if self.full_path:
             self.md5 = generate_md5(self.full_path)
+            logger.debug(f"Found existing file for plugin {self.name} with md5: {self.md5}")
         else:
             self.md5 = None
+
 
     def generate_full_path(self):
         if not self.name:
@@ -73,8 +77,9 @@ class Plugin:
         
         return full_path
 
+
     def download_latest_file(self):
-        print(f"Downloading latest version of {self.name} to compare md5...")
+        logger.debug(f"Downloading latest file for: {self.name}")
 
 
 class Paper(Plugin):
@@ -93,7 +98,7 @@ class Paper(Plugin):
 
         try:
             # --- PHASE 1: FIND THE LATEST STABLE VERSION AND BUILD ---
-            #print("Fetching latest stable PaperMC version...")
+            logger.debug("Fetching latest stable PaperMC version...")
             
             # Get all available Minecraft versions for Paper
             versions_res = requests.get(PAPER_API_BASE, timeout=10)
@@ -123,13 +128,13 @@ class Paper(Plugin):
             build_number = latest_build['build']
             jar_filename = latest_build['downloads']['application']['name']
             
-            #print(f"Latest stable build found: {build_number}. Filename: {jar_filename}")
+            logger.debug(f"Latest stable build found: {build_number}. Filename: {jar_filename}")
 
             # --- PHASE 2: CONSTRUCT DOWNLOAD URL AND DOWNLOAD ---
             
             download_url = f"{PAPER_API_BASE}/versions/{latest_mc_version}/builds/{build_number}/downloads/{jar_filename}"
             
-            #print(f"Downloading PaperMC JAR from: {download_url}")
+            logger.debug(f"Downloading PaperMC JAR from: {download_url}")
             
             # Use stream=True to handle large files efficiently
             with requests.get(download_url, stream=True, timeout=60) as r:
@@ -139,13 +144,12 @@ class Paper(Plugin):
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
             
-            #print(f"Download complete. File saved to {tmp_download_path}")
+            logger.debug(f"Download complete. File saved to {tmp_download_path}")
 
             # Return the temporary file path for the caller to move/use as needed
             return tmp_download_path
 
         except requests.exceptions.RequestException as e:
-            print(f"Network or request error: {e}")
             # Clean up temp file on error
             try:
                 os.remove(tmp_download_path)
@@ -153,7 +157,6 @@ class Paper(Plugin):
                 pass
             return None
         except Exception as e:
-            print(f"An unexpected error occurred: {e}")
             # Clean up temp file on error
             try:
                 os.remove(tmp_download_path)

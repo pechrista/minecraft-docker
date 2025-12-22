@@ -9,10 +9,13 @@ from plugins import Plugin
 from utils import setup_argparse
 from utils import generate_md5
 from utils import move_file
+from utils import ServiceAction
+from utils import manage_service
 
 DEFAULT_FREQUENCY_HOURS = "24"
 DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_DOCKER_COMPOSE_SERVICE_NAME = "minecraft"
+DEFAULT_DOCKER_COMPOSE_PATH = "."
 
 # setup logger
 logger = logging.getLogger(__name__)
@@ -33,6 +36,7 @@ class Settings:
         )
         logger.debug(f"Log level set to: {self.log_level}")
         self.docker_compose_service_name = settings.get("docker_compose_service_name", DEFAULT_DOCKER_COMPOSE_SERVICE_NAME)
+        self.docker_compose_path = settings.get("docker_compose_path", DEFAULT_DOCKER_COMPOSE_PATH)
 
 ###
 ### Functions
@@ -143,14 +147,6 @@ def update_plugin(plugin: Plugin) -> bool:
             except OSError as e:
                 logger.error(f"Warning: Failed to clean up temporary file {download_file_path}: {e}")
 
-
-def stop_mc_server():
-    logger.info("TODO... shutdown mc server")    
-
-
-def start_mc_server():
-    logger.info("TODO...start mc server")
-
 ###
 ### Main
 ###
@@ -164,13 +160,17 @@ def main():
 
     # recurring parse of config file
     while True:
+        # wait for the specified frequency
+        logger.info(f"Sleeping for {settings.frequency_hours} hours...")
+        time.sleep(int(settings.frequency_hours) * 3600)
+
         # Re-parse config file each iteration to pick up any new plugins
         settings, plugins = parse_config_file(args.config)
         logger.info(f"Found {len(plugins)} plugin(s) in config")
 
         # stop mc server for plugin check
         logger.info("Stopping minecraft server for plugin check...")
-        stop_mc_server()
+        manage_service(ServiceAction.STOP, settings.docker_compose_service_name, settings.docker_compose_path)
         
         # Update plugins
         for plugin in plugins:
@@ -179,11 +179,7 @@ def main():
 
         # restart mc server
         logger.info("Restarting minecraft server")
-        start_mc_server()
-
-        # wait for the specified frequency
-        logger.info(f"Sleeping for {settings.frequency_hours} hours...")
-        time.sleep(int(settings.frequency_hours) * 3600)
+        manage_service(ServiceAction.START, settings.docker_compose_service_name, settings.docker_compose_path)   
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)

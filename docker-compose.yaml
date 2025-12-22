@@ -1,5 +1,8 @@
 services:
   minecraft:
+    env_file:
+      - path: ./.env
+        required: true
     image: amazoncorretto:${IMAGE_VERSION}
     container_name: minecraft-server
     ports:
@@ -18,10 +21,9 @@ services:
     build:
       context: microservices/plugin-updater
       dockerfile: Dockerfile
+    pull_policy: build
     container_name: minecraft-plugin-updater
     volumes:
       - ./:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
-    depends_on:
-      - minecraft

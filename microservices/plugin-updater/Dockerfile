@@ -1,34 +1,21 @@
 # Start with the recommended lightweight image
 FROM python:3.12-slim
 
-# Install necessary system dependencies
+# 1. Install Docker CLI & Compose via official convenience script
+# This handles GPG keys, repositories, and plugins automatically.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    curl \
-    # Clean up APT cache to keep the image size down
-    && rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    curl -fsSL https://get.docker.com -o get-docker.sh && \
+    sh get-docker.sh && \
+    rm get-docker.sh && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Docker Compose as a plugin
-# This is the standard, modern way to install Compose on Linux
-RUN mkdir -p /usr/local/lib/docker/cli-plugins && \
-    curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose && \
-    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+# 2. Install Python dependencies
+RUN pip install --no-cache-dir requests PyYAML docker
 
-# Install Python dependencies
-RUN pip install --no-cache-dir \
-    requests \
-    PyYAML \
-    docker
-
-# Set working directory
 WORKDIR /app
-
-# Copy the plugin updater source
 COPY src/ /app/src/
-COPY plugin-updater.cfg /app/
-
-# Set PYTHONPATH to include src directory
 ENV PYTHONPATH=/app
 
-# Run the main script
-CMD ["python", "-u", "src/main.py", "--config", "plugin-updater.cfg"]
+# Use -u for unbuffered logging
+CMD ["python", "-u", "src/main.py", "--config", "data/plugin-updater.cfg"]

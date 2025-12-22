@@ -1,8 +1,5 @@
 services:
   minecraft:
-    env_file:
-      - path: ./.env
-        required: true
     image: amazoncorretto:${IMAGE_VERSION}
     container_name: minecraft-server
     ports:
@@ -21,6 +18,12 @@ services:
     build:
       context: microservices/plugin-updater
       dockerfile: Dockerfile
+    environment:
+      - LOG_LEVEL=${UPDATER_LOG_LEVEL}
+      - FREQUENCY_HOURS=${UPDATER_FREQUENCY_HOURS}
+      - DOCKER_COMPOSE_SERVICE_NAME=${UPDATER_SERVICE_NAME}
+      - DOCKER_COMPOSE_PATH=${UPDATER_COMPOSE_PATH}
+    command: ["python", "-u", "src/main.py", "--config", "data/plugin-updater.cfg"]
     pull_policy: build
     container_name: minecraft-plugin-updater
     volumes:

@@ -27,16 +27,19 @@ logger = logging.getLogger(__name__)
 class Settings:
     """Object to hold environment settings from config
     """
-    def __init__(self, settings: dict):
-        self.frequency_hours = settings.get("frequency_hours", DEFAULT_FREQUENCY_HOURS)
-        self.log_level = settings.get("log_level", DEFAULT_LOG_LEVEL).upper()
+def __init__(self):
+        # Read from Environment Variables instead of config dict
+        self.frequency_hours = os.getenv("FREQUENCY_HOURS", DEFAULT_FREQUENCY_HOURS)
+        self.log_level = os.getenv("LOG_LEVEL", DEFAULT_LOG_LEVEL).upper()
+        
         logging.basicConfig(
             level=self.log_level,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         logger.debug(f"Log level set to: {self.log_level}")
-        self.docker_compose_service_name = settings.get("docker_compose_service_name", DEFAULT_DOCKER_COMPOSE_SERVICE_NAME)
-        self.docker_compose_path = settings.get("docker_compose_path", DEFAULT_DOCKER_COMPOSE_PATH)
+        
+        self.docker_compose_service_name = os.getenv("DOCKER_COMPOSE_SERVICE_NAME", DEFAULT_DOCKER_COMPOSE_SERVICE_NAME)
+        self.docker_compose_path = os.getenv("DOCKER_COMPOSE_PATH", DEFAULT_DOCKER_COMPOSE_PATH)
 
 ###
 ### Functions
@@ -51,7 +54,7 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def parse_config_file(file_path: str) -> tuple[Settings, list[Plugin]]:
+def parse_config_file(file_path: str) -> tuple[list[Plugin]]:
     """
     Reads and parses a configuration file using configparser.
 
@@ -74,13 +77,6 @@ def parse_config_file(file_path: str) -> tuple[Settings, list[Plugin]]:
             logger.error(f"Error: Configuration file not found or could not be read at '{file_path}'.")
             return {}
 
-        # populate settings object from config
-        try:
-            settings = Settings(dict(config.items("settings")))
-        except KeyError as e:
-            logger.error(f"Error: Missing required field in settings: {e}")
-            exit(1)
-
         # populate plugins list from config
         for section in config.sections():
             # read all config sections that start with "plugin:"
@@ -94,7 +90,7 @@ def parse_config_file(file_path: str) -> tuple[Settings, list[Plugin]]:
         logger.error(f"Error parsing configuration file '{file_path}': {e}")
         return {}
 
-    return settings,plugins
+    return plugins
 
 
 def update_plugin(plugin: Plugin) -> bool:
@@ -156,7 +152,10 @@ def main():
     args = setup_argparse()
 
     # Now parse the full config file with log level
-    settings, plugins = parse_config_file(args.config)
+    plugins = parse_config_file(args.config)
+
+    # load env vars into settings
+    settings = Settings()
 
     # recurring parse of config file
     while True:
@@ -165,7 +164,7 @@ def main():
         time.sleep(int(settings.frequency_hours) * 3600)
 
         # Re-parse config file each iteration to pick up any new plugins
-        settings, plugins = parse_config_file(args.config)
+        plugins = parse_config_file(args.config)
         logger.info(f"Found {len(plugins)} plugin(s) in config")
 
         # stop mc server for plugin check

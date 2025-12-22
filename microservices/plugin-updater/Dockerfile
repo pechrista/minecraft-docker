@@ -16,6 +16,3 @@ RUN pip install --no-cache-dir requests PyYAML docker
 WORKDIR /app
 COPY src/ /app/src/
 ENV PYTHONPATH=/app
-
-# Use -u for unbuffered logging
-CMD ["python", "-u", "src/main.py", "--config", "data/plugin-updater.cfg"]

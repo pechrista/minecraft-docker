@@ -1,7 +1,4 @@
 # custom functions for mc server
-
-export MC_SERVER_PATH=~/minecraft-server
-
 function mc_start() {
   docker compose -f ${MC_SERVER_PATH}/docker-compose.yaml up --detach && docker logs minecraft-server -f
 }

@@ -1,32 +1,40 @@
+# your minecraft server name
+name: minecraft-flint
+
 services:
-  minecraft:
-    image: amazoncorretto:${IMAGE_VERSION}
-    container_name: minecraft-server
-    ports:
-      - "25565:25565"
-      - "25565:25565/udp"
-      - "19132:19132/udp" # optional - used for bedrock (geyser-spigot)
-    volumes:
-      - ./:/data # mount vol for curr directory as `/data`
+  bedrock-vanilla:
+    image: docker.io/pechristakos/minecraft-bedrock:latest
+    container_name: ${COMPOSE_PROJECT_NAME}
+    pull_policy: always
     restart: unless-stopped
-    command: /bin/sh -c "cd /data && java -Xms${MIN_JAVA_GB}G -Xmx${MAX_JAVA_GB}G -jar ${SERVER_FILE_NAME} --nogui"
-    # The following allow `docker attach container minecraft-server` to work
+    ports:
+      - "19132:19132/udp"
     stdin_open: true
     tty: true
-  # build image locally
-  plugin-updater:
-    build:
-      context: microservices/plugin-updater
-      dockerfile: Dockerfile
-    environment:
-      - LOG_LEVEL=${UPDATER_LOG_LEVEL}
-      - FREQUENCY_HOURS=${UPDATER_FREQUENCY_HOURS}
-      - DOCKER_COMPOSE_SERVICE_NAME=${UPDATER_SERVICE_NAME}
-      - DOCKER_COMPOSE_PATH=${UPDATER_COMPOSE_PATH}
-    command: ["python", "-u", "src/main.py", "--config", "data/plugin-updater.cfg"]
-    pull_policy: build
-    container_name: minecraft-plugin-updater
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
-      - ./:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/bedrock
+
+  bedrock-backup:
+    image: docker.io/pechristakos/minecraft-bedrock-backup:latest
+    container_name: ${COMPOSE_PROJECT_NAME}-backup
+    pull_policy: always
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - ./data:/bedrock_data:ro
+      - ./backups:/backups
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=America/New_York
+      - BACKUP_CRON=0 4 * * *
+      - MAX_BACKUPS=10

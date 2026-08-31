@@ -20,9 +20,22 @@ Both services use `restart: unless-stopped`.
 1. Make sure your computer has the requirements to run this server. See [this page](https://www.minecraft.net/en-us/download/server/bedrock) for more information. 
 1. You need Docker and Docker Compose installed on your machine.
 
-## Steps to Run
+## Steps to Run (Mac/Linux)
 
-1. Create a folder called `minecraft-{SERVER_NAME}` and go into it.
-1. Copy `docker-compose.yaml` from this repo into that folder.
-1. Tweak values as needed. (ex. Port mappings, backup frequency / timezone)
-1. Run `docker compose up -d`
+1. Run these commands to download the docker compose file in your working directory.
+
+```
+# copy dir + compose file
+curl -sL https://github.com/pechrista/minecraft-docker/archive/refs/heads/master.tar.gz | tar -xz --wildcards --strip-components=1 "*/minecraft-server"
+
+# enter dir
+cd minecraft-server
+
+# start the server (detached)
+docker compose up --detach && docker compose logs -f
+```
+
+1. (Optional) Add these minecraft shortcuts to your bashrc
+```
+curl -sL https://raw.githubusercontent.com/pechrista/minecraft-docker/master/bashrc_functions.sh >> ~/.bashrc
+```

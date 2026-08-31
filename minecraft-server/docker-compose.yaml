@@ -1,5 +1,5 @@
 # your minecraft server name
-name: minecraft-flint
+name: minecraft-server
 
 services:
   bedrock-vanilla:

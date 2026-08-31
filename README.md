@@ -25,14 +25,9 @@ Both services use `restart: unless-stopped`.
 1. Run these commands to download the docker compose file in your working directory.
 
 ```
-# copy dir + compose file
-curl -sL https://github.com/pechrista/minecraft-docker/archive/refs/heads/master.tar.gz | tar -xz --wildcards --strip-components=1 "*/minecraft-server"
-
-# enter dir
-cd minecraft-server
-
-# start the server (detached)
-docker compose up --detach && docker compose logs -f
+mkdir -p minecraft-server && cd minecraft-server && \
+curl -sL https://raw.githubusercontent.com/pechrista/minecraft-docker/master/docker-compose.yaml -o docker-compose.yaml && \
+docker compose up -d && docker compose logs -f
 ```
 
 1. (Optional) Add these minecraft shortcuts to your bashrc

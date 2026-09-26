@@ -3,7 +3,7 @@ name: minecraft-server
 
 services:
   bedrock-vanilla:
-    image: docker.io/pechristakos/minecraft-bedrock:latest
+    image: ghcr.io/pechrista/minecraft-bedrock:latest
     container_name: ${COMPOSE_PROJECT_NAME}
     pull_policy: always
     restart: unless-stopped
@@ -20,7 +20,7 @@ services:
       - ./data:/bedrock
 
   bedrock-backup:
-    image: docker.io/pechristakos/minecraft-bedrock-backup:latest
+    image: ghcr.io/pechrista/minecraft-bedrock-backup:latest
     container_name: ${COMPOSE_PROJECT_NAME}-backup
     pull_policy: always
     restart: unless-stopped

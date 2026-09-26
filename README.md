@@ -34,3 +34,4 @@ docker compose up -d && docker compose logs -f
 ```
 curl -sL https://raw.githubusercontent.com/pechrista/minecraft-docker/master/bashrc_functions.sh >> ~/.bashrc
 ```
+

@@ -1,0 +1,25 @@
+# TLS proxy for Bedrock NetherNet signaling (TCP 19132).
+# Clients (iOS in particular) require TLS with a publicly trusted certificate here;
+# the Bedrock server only speaks plain HTTP on this port. Game traffic (UDP) bypasses nginx.
+# __DOMAIN__ and __UPSTREAM__ are filled in by entrypoint.sh at startup.
+
+include /etc/nginx/modules/*.conf;
+pid /run/nginx/nginx.pid;
+error_log /dev/stderr warn;
+
+events {
+    worker_connections 1024;
+}
+
+stream {
+    server {
+        listen 19132 ssl;
+
+        ssl_certificate     /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+        ssl_alpn            http/1.1;
+
+        proxy_pass __UPSTREAM__;
+    }
+}

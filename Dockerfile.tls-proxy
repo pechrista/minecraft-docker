@@ -1,0 +1,19 @@
+FROM alpine:3.22
+
+# nginx with the stream (TCP/TLS) module, plus certbot with the Cloudflare DNS plugin
+RUN apk add --no-cache \
+    nginx \
+    nginx-mod-stream \
+    certbot \
+    certbot-dns-cloudflare \
+    && mkdir -p /run/nginx
+
+COPY tls-proxy/nginx.conf.template /etc/nginx/nginx.conf.template
+COPY tls-proxy/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Persist this volume: it holds the certificate and Let's Encrypt account
+VOLUME /etc/letsencrypt
+EXPOSE 19132/tcp
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

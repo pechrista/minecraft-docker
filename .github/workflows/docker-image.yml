@@ -17,6 +17,8 @@ jobs:
             file: ./Dockerfile
           - image_name: minecraft-bedrock-backup
             file: ./Dockerfile.backup
+          - image_name: minecraft-bedrock-tls-proxy
+            file: ./Dockerfile.tls-proxy
 
     permissions:
       contents: read

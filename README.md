@@ -12,6 +12,8 @@ Both services use `restart: unless-stopped`.
 	- Pulls the `latest` backup image on startup (`pull_policy: always`).
 	- Uses `BACKUP_CRON` for backup cadence (for example, daily at 4 AM).
 	- Reads world data from `./data` and writes backup archives to `./backups`.
+1. (Optional) `bedrock-tls-proxy`: a TLS proxy (nginx + automatic Let's Encrypt certificates)
+	needed for iOS clients when the server is reachable over the internet. See [HTTPS Proxy](#optional-https-proxy-for-internet-hosted-servers).
 
 ## Configuring server.properties
 
@@ -66,3 +68,114 @@ docker compose up -d && docker compose logs -f
 ```
 curl -sL https://raw.githubusercontent.com/pechrista/minecraft-docker/master/bashrc_functions.sh >> ~/.bashrc
 ```
+
+## (Optional) HTTPS Proxy for Internet-Hosted Servers
+
+With `transport=nethernet` (the current default), clients join in two steps:
+
+1. **Signaling** over TCP `19132`: a short HTTPS handshake. iOS/iPadOS requires TLS with a
+   **publicly trusted** certificate here. The Bedrock server only speaks plain HTTP on this
+   port, so a proxy container in front of it terminates TLS.
+1. **Game traffic** over UDP (`19140-19150` below), directly to the server. The proxy never sees
+   it, so it adds no lag.
+
+Windows clients may connect without this proxy, but iPad/iPhone clients fail with
+`InitialConnection` errors. You only need this when players connect over the internet.
+
+### Prerequisites
+
+- A domain name (for example `mc.example.com`) with an `A` record pointing to the server's
+  public IP. If the DNS is on Cloudflare, the record must be **DNS only** (grey cloud);
+  Cloudflare's proxy can't carry Minecraft traffic.
+- The domain's DNS hosted on Cloudflare, plus a Cloudflare API token so certbot can prove
+  you own the domain: My Profile -> API Tokens -> Create Token -> "Edit zone DNS" template
+  -> pick your zone.
+- Firewall/NSG rules allowing inbound **TCP 19132**, **UDP 19132** and **UDP 19140-19150**.
+
+The certificate itself comes from **Let's Encrypt**; Cloudflare is only used for the DNS
+ownership check. Cloudflare **Origin** certificates do not work here: only Cloudflare's own
+servers trust them, and Minecraft clients connect to your server directly.
+
+### How it works
+
+The `bedrock-tls-proxy` service (image `ghcr.io/pechrista/minecraft-bedrock-tls-proxy`) runs
+nginx and certbot together. It only runs when the `tls` compose profile is enabled:
+
+- On first start it gets a Let's Encrypt certificate and saves it in `./letsencrypt`.
+- nginx serves TLS on TCP `19132` and forwards signaling to `bedrock-vanilla:19132`.
+- Every 12 hours it checks for renewal and reloads nginx when the certificate renews.
+
+No config files need to be downloaded; everything is built into the image. Set `UPSTREAM`
+(default `bedrock-vanilla:19132`) if your server service has a different name.
+
+Keep the `./letsencrypt` folder. If it is deleted, a new certificate is requested, and Let's
+Encrypt allows only 5 duplicate certificates per domain per week.
+
+### 1. Create a .env file
+
+In the folder with your `docker-compose.yaml`:
+
+```bash
+cat > .env <<'EOF'
+COMPOSE_PROFILES=tls
+DOMAIN=mc.example.com
+CERTBOT_EMAIL=you@example.com
+CLOUDFLARE_API_TOKEN=PASTE_TOKEN_HERE
+EOF
+chmod 600 .env
+```
+
+`CERTBOT_EMAIL` is optional (Let's Encrypt uses it for expiry notices). Don't commit `.env`
+anywhere; it contains your API token.
+
+### 2. Publish the UDP game ports
+
+Add the UDP range and tell the server which ports to advertise. Replace `203.0.113.10` with
+your server's public IP:
+
+```yaml
+services:
+  bedrock-vanilla:
+    # ...existing settings...
+    ports:
+      - "19132:19132/udp"
+      - "19140-19150:19140-19150/udp"
+    environment:
+      - MC_TRANSPORT=nethernet
+      - "MC_SERVER_UDP_PORTS=203.0.113.10:19140-19150:19140-19150"
+```
+
+The UDP range in `ports` must match the range in `MC_SERVER_UDP_PORTS`.
+
+### 3. Start
+
+```bash
+docker compose up -d
+docker compose logs -f bedrock-tls-proxy
+```
+
+On first start the certificate takes about a minute. If the request fails, the proxy logs
+the error and waits an hour before retrying (to stay under Let's Encrypt's rate limits).
+Fix the problem, then run `docker compose restart bedrock-tls-proxy`.
+
+### 4. Verify
+
+```bash
+DOMAIN=mc.example.com
+echo | openssl s_client -connect $DOMAIN:19132 -servername $DOMAIN 2>&1 | grep -E 'issuer=|Verify return'
+curl -s https://$DOMAIN:19132/v1/join; echo
+```
+
+You want a Let's Encrypt issuer, `Verify return code: 0 (ok)`, and JSON containing your
+server name. Code `21` means the certificate isn't publicly trusted (for example a
+Cloudflare Origin certificate).
+
+### Migrating from a manual nginx + host certbot setup
+
+1. Replace your nginx service with `bedrock-tls-proxy` and add the `.env` above.
+1. Remove the old renewal hook: `sudo rm -f /etc/letsencrypt/renewal-hooks/deploy/minecraft.sh`.
+1. After the new proxy works, you can delete `nginx.conf`, `./certs` and the host copy
+   (`sudo certbot delete --cert-name mc.example.com`).
+
+The container requests its own certificate on first start (this counts once toward the
+weekly limit).

@@ -53,3 +53,28 @@ services:
       - TZ=America/New_York
       - BACKUP_CRON=0 4 * * *
       - MAX_BACKUPS=10
+
+  # Optional TLS proxy for Bedrock signaling (needed for iOS clients over the internet).
+  # Enabled by COMPOSE_PROFILES=tls in .env. Gets and renews a Let's Encrypt certificate
+  # automatically. See README "HTTPS Proxy".
+  bedrock-tls-proxy:
+    image: ghcr.io/pechrista/minecraft-bedrock-tls-proxy:latest
+    container_name: ${COMPOSE_PROJECT_NAME}-tls-proxy
+    profiles: ["tls"]
+    pull_policy: always
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "19132:19132/tcp"
+    environment:
+      - DOMAIN=${DOMAIN:-}
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL:-}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+    depends_on:
+      - bedrock-vanilla

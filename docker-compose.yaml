@@ -18,6 +18,21 @@ services:
         max-file: "3"
     volumes:
       - ./data:/bedrock
+    # Override any server.properties value with MC_<KEY> (uppercase, '-' -> '_').
+    # Unset keys keep their server.properties value. Uncomment and edit as needed.
+    # environment:
+    #   - MC_SERVER_NAME=My Server
+    #   - MC_LEVEL_NAME=Bedrock level
+    #   - MC_LEVEL_SEED=
+    #   - MC_GAMEMODE=survival
+    #   - MC_DIFFICULTY=easy
+    #   - MC_ALLOW_CHEATS=false
+    #   - MC_MAX_PLAYERS=10
+    #   - MC_ONLINE_MODE=true
+    #   - MC_ALLOW_LIST=false
+    #   - MC_VIEW_DISTANCE=32
+    #   - MC_TICK_DISTANCE=4
+    #   - MC_DEFAULT_PLAYER_PERMISSION_LEVEL=member
 
   bedrock-backup:
     image: ghcr.io/pechrista/minecraft-bedrock-backup:latest

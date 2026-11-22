@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     ports:
       - "19132:19132/udp"
+      - "19140-19150:19140-19150/udp"
     stdin_open: true
     tty: true
     logging:
@@ -18,21 +19,51 @@ services:
         max-file: "3"
     volumes:
       - ./data:/bedrock
-    # Override any server.properties value with MC_<KEY> (uppercase, '-' -> '_').
-    # Unset keys keep their server.properties value. Uncomment and edit as needed.
-    # environment:
-    #   - MC_SERVER_NAME=My Server
-    #   - MC_LEVEL_NAME=Bedrock level
-    #   - MC_LEVEL_SEED=
-    #   - MC_GAMEMODE=survival
-    #   - MC_DIFFICULTY=easy
-    #   - MC_ALLOW_CHEATS=false
-    #   - MC_MAX_PLAYERS=10
-    #   - MC_ONLINE_MODE=true
-    #   - MC_ALLOW_LIST=false
-    #   - MC_VIEW_DISTANCE=32
-    #   - MC_TICK_DISTANCE=4
-    #   - MC_DEFAULT_PLAYER_PERMISSION_LEVEL=member
+    networks:
+      - mc-secure-net
+    environment:
+      - MC_TRANSPORT=nethernet
+      # Must match the UDP range in ports above
+      - "MC_SERVER_UDP_PORTS=${PUBLIC_IP:?set PUBLIC_IP in .env}:19140-19150:19140-19150"
+      # Override any server.properties value with MC_<KEY> (uppercase, '-' -> '_').
+      # Unset keys keep their server.properties value. Uncomment and edit as needed.
+      # - MC_SERVER_NAME=My Server
+      # - MC_LEVEL_NAME=Bedrock level
+      # - MC_LEVEL_SEED=
+      # - MC_GAMEMODE=survival
+      # - MC_DIFFICULTY=easy
+      # - MC_ALLOW_CHEATS=false
+      # - MC_MAX_PLAYERS=10
+      # - MC_ONLINE_MODE=true
+      # - MC_ALLOW_LIST=false
+      # - MC_VIEW_DISTANCE=32
+      # - MC_TICK_DISTANCE=4
+      # - MC_DEFAULT_PLAYER_PERMISSION_LEVEL=member
+
+  # TLS for NetherNet signaling on TCP 19132 (required by iOS clients).
+  # Gets and renews a Let's Encrypt certificate automatically.
+  bedrock-tls-proxy:
+    image: ghcr.io/pechrista/minecraft-bedrock-tls-proxy:latest
+    container_name: ${COMPOSE_PROJECT_NAME}-tls-proxy
+    pull_policy: always
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "19132:19132/tcp"
+    environment:
+      - DOMAIN=${DOMAIN:?set DOMAIN in .env}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN in .env}
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL:-}
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+    networks:
+      - mc-secure-net
+    depends_on:
+      - bedrock-vanilla
 
   bedrock-backup:
     image: ghcr.io/pechrista/minecraft-bedrock-backup:latest
@@ -49,32 +80,16 @@ services:
       - ./backups:/backups
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/localtime:/etc/localtime:ro
+    networks:
+      - mc-secure-net
     environment:
       - TZ=America/New_York
       - BACKUP_CRON=0 4 * * *
       - MAX_BACKUPS=10
 
-  # Optional TLS proxy for Bedrock signaling (needed for iOS clients over the internet).
-  # Enabled by COMPOSE_PROFILES=tls in .env. Gets and renews a Let's Encrypt certificate
-  # automatically. See README "HTTPS Proxy".
-  bedrock-tls-proxy:
-    image: ghcr.io/pechrista/minecraft-bedrock-tls-proxy:latest
-    container_name: ${COMPOSE_PROJECT_NAME}-tls-proxy
-    profiles: ["tls"]
-    pull_policy: always
-    restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    ports:
-      - "19132:19132/tcp"
-    environment:
-      - DOMAIN=${DOMAIN:-}
-      - CERTBOT_EMAIL=${CERTBOT_EMAIL:-}
-      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
-    volumes:
-      - ./letsencrypt:/etc/letsencrypt
-    depends_on:
-      - bedrock-vanilla
+networks:
+  mc-secure-net:
+    driver: bridge
+    driver_opts:
+      # Lower MTU avoids fragmentation issues on cloud VMs (e.g. Azure)
+      com.docker.network.driver.mtu: "1400"

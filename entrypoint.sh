@@ -59,7 +59,9 @@ fi
 # Apply server.properties overrides from environment variables.
 # Any key in server.properties can be overridden with MC_<KEY>, where the key is
 # uppercased and '-' / '.' become '_' (e.g. level-name -> MC_LEVEL_NAME).
-# Keys without a matching variable keep their current value.
+# Keys without a matching variable keep their current value. MC_* variables with no
+# matching key (e.g. keys Mojang ships commented out) are appended as new keys
+# (MC_SERVER_IP -> server-ip).
 PROPS_FILE="/bedrock/server.properties"
 if [ -f "$PROPS_FILE" ]; then
     TMP_PROPS=$(mktemp)
@@ -72,11 +74,21 @@ if [ -f "$PROPS_FILE" ]; then
             gsub(/[-.]/, "_", var)
             if (var in ENVIRON) {
                 print key "=" ENVIRON[var]
+                used[var] = 1
                 printf "Overriding server.properties: %s (from %s)\n", key, var > "/dev/stderr"
                 next
             }
         }
         { print }
+        END {
+            for (var in ENVIRON) {
+                if (var !~ /^MC_[A-Z0-9_]+$/ || (var in used)) continue
+                key = tolower(substr(var, 4))
+                gsub(/_/, "-", key)
+                print key "=" ENVIRON[var]
+                printf "Adding new key to server.properties: %s (from %s) - check spelling if unexpected\n", key, var > "/dev/stderr"
+            }
+        }
     ' "$PROPS_FILE" > "$TMP_PROPS"
     # Write in place to preserve ownership/permissions of the mounted file
     cat "$TMP_PROPS" > "$PROPS_FILE"

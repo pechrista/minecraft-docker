@@ -39,7 +39,10 @@ Notes:
   over manual edits to the same keys in `./data/server.properties`.
 - Keys without a matching variable are left unchanged (Mojang defaults on a fresh install).
 - Removing a variable does not revert the key; the last applied value stays in the file.
-- Only keys already present in `server.properties` are applied; unknown variables are ignored.
+- If a variable has no matching key (for example `server-ip`, which Mojang ships commented
+  out), the key is appended to the file (`MC_SERVER_IP=1.2.3.4` -> `server-ip=1.2.3.4`).
+  The log prints `Adding new key ... check spelling if unexpected`, so watch for typos:
+  `MC_MAX_PLAYRES` would add an unused `max-playres` key instead of changing `max-players`.
 - Restart the container after changing values: `docker compose up -d`.
 
 ## How to Run

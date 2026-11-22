@@ -13,6 +13,35 @@ Both services use `restart: unless-stopped`.
 	- Uses `BACKUP_CRON` for backup cadence (for example, daily at 4 AM).
 	- Reads world data from `./data` and writes backup archives to `./backups`.
 
+## Configuring server.properties
+
+Any key in `server.properties` can be overridden with an environment variable on the
+`bedrock-vanilla` service. Use the key name uppercased and prefixed with `MC_`, with
+`-` (and `.`) replaced by `_`:
+
+| server.properties key | Environment variable |
+| --- | --- |
+| `level-name` | `MC_LEVEL_NAME` |
+| `gamemode` | `MC_GAMEMODE` |
+| `max-players` | `MC_MAX_PLAYERS` |
+| `default-player-permission-level` | `MC_DEFAULT_PLAYER_PERMISSION_LEVEL` |
+
+```yaml
+    environment:
+      - MC_SERVER_NAME=My Server
+      - MC_GAMEMODE=creative
+      - MC_DIFFICULTY=normal
+```
+
+Notes:
+
+- Overrides are applied on every container start, so values set in compose take precedence
+  over manual edits to the same keys in `./data/server.properties`.
+- Keys without a matching variable are left unchanged (Mojang defaults on a fresh install).
+- Removing a variable does not revert the key; the last applied value stays in the file.
+- Only keys already present in `server.properties` are applied; unknown variables are ignored.
+- Restart the container after changing values: `docker compose up -d`.
+
 ## How to Run
 
 ## Prerequisites

@@ -56,6 +56,35 @@ else
     fi
 fi
 
+# Apply server.properties overrides from environment variables.
+# Any key in server.properties can be overridden with MC_<KEY>, where the key is
+# uppercased and '-' / '.' become '_' (e.g. level-name -> MC_LEVEL_NAME).
+# Keys without a matching variable keep their current value.
+PROPS_FILE="/bedrock/server.properties"
+if [ -f "$PROPS_FILE" ]; then
+    TMP_PROPS=$(mktemp)
+    awk '
+        /^[[:space:]]*[A-Za-z0-9._-]+[[:space:]]*=/ {
+            key = $0
+            sub(/^[[:space:]]*/, "", key)
+            sub(/[[:space:]]*=.*/, "", key)
+            var = "MC_" toupper(key)
+            gsub(/[-.]/, "_", var)
+            if (var in ENVIRON) {
+                print key "=" ENVIRON[var]
+                printf "Overriding server.properties: %s (from %s)\n", key, var > "/dev/stderr"
+                next
+            }
+        }
+        { print }
+    ' "$PROPS_FILE" > "$TMP_PROPS"
+    # Write in place to preserve ownership/permissions of the mounted file
+    cat "$TMP_PROPS" > "$PROPS_FILE"
+    rm -f "$TMP_PROPS"
+else
+    echo "Warning: $PROPS_FILE not found; skipping environment overrides."
+fi
+
 # Launch the server
 cd /bedrock
 chmod +x bedrock_server

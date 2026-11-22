@@ -53,3 +53,83 @@ services:
       - TZ=America/New_York
       - BACKUP_CRON=0 4 * * *
       - MAX_BACKUPS=10
+
+  # --- Optional TLS signaling proxy (needed for iOS clients over the internet) ---
+  # Enabled by COMPOSE_PROFILES=tls in .env. See README "HTTPS Proxy".
+
+  # Gets a Let's Encrypt certificate (Cloudflare DNS challenge) on first start,
+  # renews every 12h, and copies it to ./certs for nginx.
+  certbot:
+    image: certbot/dns-cloudflare:latest
+    container_name: ${COMPOSE_PROJECT_NAME}-certbot
+    profiles: ["tls"]
+    pull_policy: always
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      - DOMAIN=${DOMAIN:-}
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL:-}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ./certs:/certs
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -u
+        trap 'exit 0' TERM INT
+        # Back off on errors so restarts don't hit Let's Encrypt rate limits
+        fail() { echo "certbot: $$1"; sleep 3600 & wait $$!; exit 1; }
+        [ -n "$$DOMAIN" ] || fail "DOMAIN is not set"
+        [ -n "$$CLOUDFLARE_API_TOKEN" ] || fail "CLOUDFLARE_API_TOKEN is not set"
+        printf 'dns_cloudflare_api_token = %s\n' "$$CLOUDFLARE_API_TOKEN" > /tmp/cf.ini
+        chmod 600 /tmp/cf.ini
+        LIVE="/etc/letsencrypt/live/$$DOMAIN"
+        if [ ! -s "$$LIVE/fullchain.pem" ]; then
+          if [ -n "$$CERTBOT_EMAIL" ]; then ACCOUNT="-m $$CERTBOT_EMAIL"; else ACCOUNT="--register-unsafely-without-email"; fi
+          certbot certonly --non-interactive --agree-tos $$ACCOUNT \
+            --dns-cloudflare --dns-cloudflare-credentials /tmp/cf.ini -d "$$DOMAIN" \
+            || fail "certificate request failed; retrying in 1 hour"
+        fi
+        while :; do
+          certbot renew --quiet
+          cp -L "$$LIVE/fullchain.pem" /certs/cert.pem
+          cp -L "$$LIVE/privkey.pem" /certs/key.pem
+          sleep 43200 & wait $$!
+        done
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /certs/cert.pem && test -s /certs/key.pem"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # Terminates TLS on TCP 19132 and forwards signaling to the server.
+  # Reloads every 12h to pick up renewed certificates.
+  bedrock-signaling-proxy:
+    image: nginx:alpine
+    container_name: ${COMPOSE_PROJECT_NAME}-https-proxy
+    profiles: ["tls"]
+    pull_policy: always
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+      - "19132:19132/tcp"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    command: ["/bin/sh", "-c", "while :; do sleep 43200; nginx -s reload; done & exec nginx -g 'daemon off;'"]
+    depends_on:
+      bedrock-vanilla:
+        condition: service_started
+      certbot:
+        condition: service_healthy

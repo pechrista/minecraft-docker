@@ -87,44 +87,58 @@ Windows clients may connect without this proxy, but iPad/iPhone clients fail wit
 - A domain name (for example `mc.example.com`) with an `A` record pointing to the server's
   public IP. If the DNS is on Cloudflare, the record must be **DNS only** (grey cloud);
   Cloudflare's proxy can't carry Minecraft traffic.
+- The domain's DNS hosted on Cloudflare, plus a Cloudflare API token so certbot can prove
+  you own the domain: My Profile -> API Tokens -> Create Token -> "Edit zone DNS" template
+  -> pick your zone.
 - Firewall/NSG rules allowing inbound **TCP 19132**, **UDP 19132** and **UDP 19140-19150**.
 
-### 1. Get a Let's Encrypt certificate
+The certificate itself comes from **Let's Encrypt**; Cloudflare is only used for the DNS
+ownership check. Cloudflare **Origin** certificates do not work here: only Cloudflare's own
+servers trust them, and Minecraft clients connect to your server directly.
 
-Cloudflare **Origin** certificates do not work: only Cloudflare's own servers trust them,
-and clients connect to your server directly. Use Let's Encrypt (or another public CA).
+### How it works
 
-The example uses certbot's Cloudflare DNS plugin, which doesn't need port 80 open. Create a
-Cloudflare API token first: My Profile -> API Tokens -> Create Token -> "Edit zone DNS"
-template -> pick your zone. (certbot has DNS plugins for other providers too.)
+The proxy services are behind a compose profile named `tls`, so they only run when enabled:
+
+- `certbot` gets a Let's Encrypt certificate on first start, saves it in `./letsencrypt`,
+  checks for renewal every 12 hours, and copies the current certificate to `./certs`.
+- `bedrock-signaling-proxy` (nginx) waits until a certificate exists, serves TLS on TCP
+  `19132`, and reloads every 12 hours to pick up renewed certificates.
+
+Keep the `./letsencrypt` folder. If it is deleted, a new certificate is requested, and Let's
+Encrypt allows only 5 duplicate certificates per domain per week.
+
+### 1. Create a .env file
+
+In the folder with your `docker-compose.yaml`:
 
 ```bash
+cat > .env <<'EOF'
+COMPOSE_PROFILES=tls
 DOMAIN=mc.example.com
-sudo apt update && sudo apt install -y certbot python3-certbot-dns-cloudflare
-echo 'dns_cloudflare_api_token = PASTE_TOKEN_HERE' | sudo tee /root/cf.ini >/dev/null
-sudo chmod 600 /root/cf.ini
-sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/cf.ini -d "$DOMAIN"
+CERTBOT_EMAIL=you@example.com
+CLOUDFLARE_API_TOKEN=PASTE_TOKEN_HERE
+EOF
+chmod 600 .env
 ```
 
-### 2. Copy the certificate and nginx config into your server folder
+`CERTBOT_EMAIL` is optional (Let's Encrypt uses it for expiry notices). Don't commit `.env`
+anywhere; it contains your API token.
 
-Run these from the folder that holds your `docker-compose.yaml`:
+### 2. Download nginx.conf
 
 ```bash
-DOMAIN=mc.example.com
-mkdir -p certs
-sudo cp -L /etc/letsencrypt/live/$DOMAIN/fullchain.pem certs/cert.pem
-sudo cp -L /etc/letsencrypt/live/$DOMAIN/privkey.pem  certs/key.pem
 curl -sL https://raw.githubusercontent.com/pechrista/minecraft-docker/master/nginx.conf -o nginx.conf
 ```
 
 `nginx.conf` proxies to the compose service name `bedrock-vanilla`. If you rename that
-service, update `proxy_pass` to match.
+service, update `proxy_pass` to match. If `nginx.conf` is missing, Docker creates an empty
+directory with that name and nginx fails to start.
 
-### 3. Update docker-compose.yaml
+### 3. Publish the UDP game ports
 
-Publish the UDP game ports, tell the server which ports to advertise, and add the proxy
-service. Replace `203.0.113.10` with your server's public IP:
+Add the UDP range and tell the server which ports to advertise. Replace `203.0.113.10` with
+your server's public IP:
 
 ```yaml
 services:
@@ -136,28 +150,23 @@ services:
     environment:
       - MC_TRANSPORT=nethernet
       - "MC_SERVER_UDP_PORTS=203.0.113.10:19140-19150:19140-19150"
-
-  bedrock-signaling-proxy:
-    image: nginx:alpine
-    container_name: ${COMPOSE_PROJECT_NAME}-https-proxy
-    restart: unless-stopped
-    ports:
-      - "19132:19132/tcp"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./certs:/etc/nginx/certs:ro
-    depends_on:
-      - bedrock-vanilla
 ```
 
-The UDP range on the left of each `ports` entry must match the range in
-`MC_SERVER_UDP_PORTS`. Then start everything:
+The UDP range in `ports` must match the range in `MC_SERVER_UDP_PORTS`.
+
+### 4. Start
 
 ```bash
 docker compose up -d
+docker compose logs -f certbot
 ```
 
-### 4. Verify
+On first start certbot takes about a minute to get the certificate; nginx starts once it's
+ready. If the request fails, certbot logs the error and waits an hour before retrying (to
+stay under Let's Encrypt's rate limits). Fix the problem, then run
+`docker compose restart certbot`.
+
+### 5. Verify
 
 ```bash
 DOMAIN=mc.example.com
@@ -169,25 +178,15 @@ You want a Let's Encrypt issuer, `Verify return code: 0 (ok)`, and JSON containi
 server name. Code `21` means the certificate isn't publicly trusted (for example a
 Cloudflare Origin certificate).
 
-### 5. Automate certificate renewal
+### Migrating from a host-installed certbot
 
-certbot renews certificates in `/etc/letsencrypt` automatically, but nginx reads the copies
-in `./certs`. Without this hook, clients start failing when the copy expires (~90 days).
-Run from your server folder:
+If you previously installed certbot on the host and copied certificates into `./certs`
+with a renewal hook, remove the hook so two processes don't write to `./certs`:
 
 ```bash
-DOMAIN=mc.example.com
-DIR=$(pwd)
-sudo tee /etc/letsencrypt/renewal-hooks/deploy/minecraft.sh >/dev/null <<EOF
-#!/bin/sh
-cp -L /etc/letsencrypt/live/$DOMAIN/fullchain.pem $DIR/certs/cert.pem
-cp -L /etc/letsencrypt/live/$DOMAIN/privkey.pem  $DIR/certs/key.pem
-cd $DIR && docker compose restart bedrock-signaling-proxy
-EOF
-sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/minecraft.sh
-sudo certbot renew --dry-run
+sudo rm -f /etc/letsencrypt/renewal-hooks/deploy/minecraft.sh
 ```
 
-The dry run should end with `all simulated renewals succeeded`. Note that `--dry-run`
-doesn't run deploy hooks; check the hook file contents with
-`cat /etc/letsencrypt/renewal-hooks/deploy/minecraft.sh`.
+The container requests its own certificate on first start (this counts once toward the
+weekly limit). Afterwards you can remove the host copy with
+`sudo certbot delete --cert-name mc.example.com`.

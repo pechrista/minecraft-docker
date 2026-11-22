@@ -19,6 +19,8 @@ services:
         max-file: "3"
     volumes:
       - ./data:/bedrock
+    networks:
+      - mc-secure-net
     environment:
       - MC_TRANSPORT=nethernet
       # Must match the UDP range in ports above
@@ -58,6 +60,8 @@ services:
       - CERTBOT_EMAIL=${CERTBOT_EMAIL:-}
     volumes:
       - ./letsencrypt:/etc/letsencrypt
+    networks:
+      - mc-secure-net
     depends_on:
       - bedrock-vanilla
 
@@ -76,7 +80,16 @@ services:
       - ./backups:/backups
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/localtime:/etc/localtime:ro
+    networks:
+      - mc-secure-net
     environment:
       - TZ=America/New_York
       - BACKUP_CRON=0 4 * * *
       - MAX_BACKUPS=10
+
+networks:
+  mc-secure-net:
+    driver: bridge
+    driver_opts:
+      # Lower MTU avoids fragmentation issues on cloud VMs (e.g. Azure)
+      com.docker.network.driver.mtu: "1400"

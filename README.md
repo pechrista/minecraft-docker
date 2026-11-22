@@ -12,8 +12,8 @@ Both services use `restart: unless-stopped`.
 	- Pulls the `latest` backup image on startup (`pull_policy: always`).
 	- Uses `BACKUP_CRON` for backup cadence (for example, daily at 4 AM).
 	- Reads world data from `./data` and writes backup archives to `./backups`.
-1. (Optional) `bedrock-signaling-proxy`: an nginx TLS proxy needed for iOS clients when the
-	server is reachable over the internet. See [HTTPS Proxy](#optional-https-proxy-for-internet-hosted-servers).
+1. (Optional) `bedrock-tls-proxy`: a TLS proxy (nginx + automatic Let's Encrypt certificates)
+	needed for iOS clients when the server is reachable over the internet. See [HTTPS Proxy](#optional-https-proxy-for-internet-hosted-servers).
 
 ## Configuring server.properties
 
@@ -75,8 +75,8 @@ With `transport=nethernet` (the current default), clients join in two steps:
 
 1. **Signaling** over TCP `19132`: a short HTTPS handshake. iOS/iPadOS requires TLS with a
    **publicly trusted** certificate here. The Bedrock server only speaks plain HTTP on this
-   port, so an nginx container in front of it terminates TLS.
-1. **Game traffic** over UDP (`19140-19150` below), directly to the server. nginx never sees
+   port, so a proxy container in front of it terminates TLS.
+1. **Game traffic** over UDP (`19140-19150` below), directly to the server. The proxy never sees
    it, so it adds no lag.
 
 Windows clients may connect without this proxy, but iPad/iPhone clients fail with
@@ -98,12 +98,15 @@ servers trust them, and Minecraft clients connect to your server directly.
 
 ### How it works
 
-The proxy services are behind a compose profile named `tls`, so they only run when enabled:
+The `bedrock-tls-proxy` service (image `ghcr.io/pechrista/minecraft-bedrock-tls-proxy`) runs
+nginx and certbot together. It only runs when the `tls` compose profile is enabled:
 
-- `certbot` gets a Let's Encrypt certificate on first start, saves it in `./letsencrypt`,
-  checks for renewal every 12 hours, and copies the current certificate to `./certs`.
-- `bedrock-signaling-proxy` (nginx) waits until a certificate exists, serves TLS on TCP
-  `19132`, and reloads every 12 hours to pick up renewed certificates.
+- On first start it gets a Let's Encrypt certificate and saves it in `./letsencrypt`.
+- nginx serves TLS on TCP `19132` and forwards signaling to `bedrock-vanilla:19132`.
+- Every 12 hours it checks for renewal and reloads nginx when the certificate renews.
+
+No config files need to be downloaded; everything is built into the image. Set `UPSTREAM`
+(default `bedrock-vanilla:19132`) if your server service has a different name.
 
 Keep the `./letsencrypt` folder. If it is deleted, a new certificate is requested, and Let's
 Encrypt allows only 5 duplicate certificates per domain per week.
@@ -125,17 +128,7 @@ chmod 600 .env
 `CERTBOT_EMAIL` is optional (Let's Encrypt uses it for expiry notices). Don't commit `.env`
 anywhere; it contains your API token.
 
-### 2. Download nginx.conf
-
-```bash
-curl -sL https://raw.githubusercontent.com/pechrista/minecraft-docker/master/nginx.conf -o nginx.conf
-```
-
-`nginx.conf` proxies to the compose service name `bedrock-vanilla`. If you rename that
-service, update `proxy_pass` to match. If `nginx.conf` is missing, Docker creates an empty
-directory with that name and nginx fails to start.
-
-### 3. Publish the UDP game ports
+### 2. Publish the UDP game ports
 
 Add the UDP range and tell the server which ports to advertise. Replace `203.0.113.10` with
 your server's public IP:
@@ -154,19 +147,18 @@ services:
 
 The UDP range in `ports` must match the range in `MC_SERVER_UDP_PORTS`.
 
-### 4. Start
+### 3. Start
 
 ```bash
 docker compose up -d
-docker compose logs -f certbot
+docker compose logs -f bedrock-tls-proxy
 ```
 
-On first start certbot takes about a minute to get the certificate; nginx starts once it's
-ready. If the request fails, certbot logs the error and waits an hour before retrying (to
-stay under Let's Encrypt's rate limits). Fix the problem, then run
-`docker compose restart certbot`.
+On first start the certificate takes about a minute. If the request fails, the proxy logs
+the error and waits an hour before retrying (to stay under Let's Encrypt's rate limits).
+Fix the problem, then run `docker compose restart bedrock-tls-proxy`.
 
-### 5. Verify
+### 4. Verify
 
 ```bash
 DOMAIN=mc.example.com
@@ -178,15 +170,12 @@ You want a Let's Encrypt issuer, `Verify return code: 0 (ok)`, and JSON containi
 server name. Code `21` means the certificate isn't publicly trusted (for example a
 Cloudflare Origin certificate).
 
-### Migrating from a host-installed certbot
+### Migrating from a manual nginx + host certbot setup
 
-If you previously installed certbot on the host and copied certificates into `./certs`
-with a renewal hook, remove the hook so two processes don't write to `./certs`:
-
-```bash
-sudo rm -f /etc/letsencrypt/renewal-hooks/deploy/minecraft.sh
-```
+1. Replace your nginx service with `bedrock-tls-proxy` and add the `.env` above.
+1. Remove the old renewal hook: `sudo rm -f /etc/letsencrypt/renewal-hooks/deploy/minecraft.sh`.
+1. After the new proxy works, you can delete `nginx.conf`, `./certs` and the host copy
+   (`sudo certbot delete --cert-name mc.example.com`).
 
 The container requests its own certificate on first start (this counts once toward the
-weekly limit). Afterwards you can remove the host copy with
-`sudo certbot delete --cert-name mc.example.com`.
+weekly limit).

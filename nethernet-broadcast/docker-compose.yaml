@@ -1,0 +1,16 @@
+services:
+  nethernet-broadcaster:
+    build: .
+    container_name: nethernet-broadcaster
+    # restart: unless-stopped
+    network_mode: host
+    environment:
+      AZURE_VM_IP: "mc.ctakos.com"
+      AZURE_SIGNAL_PORT: "19132"
+      SERVER_NAME: "Azure Bedrock Server"
+      LEVEL_NAME: "Creative World"
+      GAME_TYPE: "0"
+      PLAYER_COUNT: "0"
+      MAX_PLAYERS: "10"
+      EDITOR_WORLD: "false"
+      TRANSPORT_LAYER: "2"

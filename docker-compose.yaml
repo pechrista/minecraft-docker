@@ -85,7 +85,6 @@ services:
     environment:
       - TZ=America/New_York
       - BACKUP_CRON=0 4 * * *
-      - MAX_BACKUPS=10
 
 networks:
   mc-secure-net:
